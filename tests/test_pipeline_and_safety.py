@@ -52,7 +52,10 @@ class ScriptedModelClient(FakeModelClient):
             if self._review_calls <= self.reject_rounds:
                 payload = {
                     "approved": False,
-                    "feedback": f"Include exact station reading and action item (round {self._review_calls}).",
+                    "feedback": (
+                        f"Include exact station reading and action item "
+                        f"(round {self._review_calls})."
+                    ),
                 }
                 return ModelResponse(
                     content=json.dumps(payload),
