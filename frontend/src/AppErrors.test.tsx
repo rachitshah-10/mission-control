@@ -30,4 +30,61 @@ describe("Mission Control non-JSON error handling", () => {
     expect(alert).toHaveTextContent(/Internal Server Error/i);
     expect(alert).not.toHaveTextContent(/expected pattern/i);
   });
+
+  it("renders collapsible sections for dense safety/note and step trace details", async () => {
+    const sample = {
+      id: 1,
+      name: "Rachit",
+      station: "PROP-01",
+      wind_knots: 14,
+      temp_c: 15,
+      fuel_pct: 99,
+      note: "Raw sensor jitter on valve B.",
+      verdict: "go",
+      violations: [],
+      subsystem: "propulsion",
+      severity: "low",
+      brief_by_minutes: 30,
+      hidden_instructions_flagged: false,
+      missing_details_flagged: false,
+      panic_tone_flagged: false,
+      review_required: false,
+      briefing_text: "Nominal telemetry.",
+      draft_rounds: 1,
+      approval_status: "pending",
+      approved_by: null,
+      approved_at: null,
+      total_tokens: 50,
+      total_cost_usd: 0.0002,
+      created_at: "2026-11-17T14:00:00Z",
+      steps: [
+        {
+          id: 1,
+          report_id: 1,
+          step_order: 1,
+          step_name: "launch_limits",
+          input_tokens: 0,
+          output_tokens: 0,
+          total_tokens: 0,
+          cost_usd: 0,
+          output_summary: "verdict=go",
+          detail: { verdict: "go" },
+          created_at: "2026-11-17T14:00:00Z",
+        },
+      ],
+    };
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify([sample]), { status: 200 })
+    );
+
+    render(<App />);
+    await screen.findByText(/Nominal telemetry/i);
+
+    const safetyToggle = screen.getByTestId("safety-note-details") as HTMLDetailsElement;
+    expect(safetyToggle.open).toBe(false);
+
+    const traceToggle = screen.getByTestId("trace-details") as HTMLDetailsElement;
+    expect(traceToggle.open).toBe(true);
+  });
 });
