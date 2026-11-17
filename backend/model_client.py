@@ -37,7 +37,11 @@ class OpenAIModelClient:
     ) -> None:
         self.base_url = base_url
         self._model = model
-        self._client = client or AsyncOpenAI(api_key=api_key, base_url=base_url)
+        self._client = client or AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=30.0,
+        )
 
     async def complete(
         self,
@@ -49,6 +53,7 @@ class OpenAIModelClient:
             "model": self._model,
             "instructions": system_prompt,
             "input": user_prompt,
+            "reasoning": {"effort": "low"},
         }
         if response_schema is not None:
             kwargs["text"] = {
