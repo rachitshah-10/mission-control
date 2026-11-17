@@ -84,3 +84,16 @@ class ReportOut(BaseModel):
     total_cost_usd: float
     created_at: str
     steps: list[PipelineStepOut] = Field(default_factory=list)
+
+
+class ApprovalRequest(BaseModel):
+    approved_by: str
+    actor_type: Literal["human"] = "human"
+
+    @field_validator("approved_by")
+    @classmethod
+    def approver_not_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("approved_by must not be blank")
+        return stripped

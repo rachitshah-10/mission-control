@@ -230,3 +230,29 @@ def list_reports(db_path: str | Path | None) -> list[dict[str, Any]]:
         steps_by_report.setdefault(step["report_id"], []).append(step)
 
     return [_row_to_report(r, steps_by_report.get(r["id"], [])) for r in report_rows]
+
+
+def approve_report(
+    db_path: str | Path | None,
+    report_id: int,
+    approved_by: str,
+) -> tuple[str, dict[str, Any] | None]:
+    with get_connection(db_path) as conn:
+        existing = conn.execute(
+            "SELECT approval_status FROM reports WHERE id = ?",
+            (report_id,),
+        ).fetchone()
+        if existing is None:
+            return "not_found", None
+        if existing["approval_status"] == "approved":
+            return "already_approved", None
+
+        conn.execute(
+            """
+            UPDATE reports
+            SET approval_status = 'approved', approved_by = ?, approved_at = ?
+            WHERE id = ? AND approval_status = 'pending'
+            """,
+            (approved_by, _utc_now_iso(), report_id),
+        )
+    return "ok", get_report(db_path, report_id)
