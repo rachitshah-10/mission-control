@@ -36,6 +36,16 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(6)}`;
 }
 
+async function parseResponseBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { detail: text };
+  }
+}
+
 export default function App() {
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -110,9 +120,9 @@ export default function App() {
           note: form.note,
         }),
       });
-      const body = await res.json();
+      const body = await parseResponseBody(res);
       if (!res.ok) {
-        setFormError(formatApiError(body, "Report submission failed."));
+        setFormError(formatApiError(body, `Report submission failed (${res.status}).`));
         return;
       }
       const created = body as Report;
@@ -146,9 +156,9 @@ export default function App() {
           actor_type: "human",
         }),
       });
-      const body = await res.json();
+      const body = await parseResponseBody(res);
       if (!res.ok) {
-        setApprovalError(formatApiError(body, "Approval failed."));
+        setApprovalError(formatApiError(body, `Approval failed (${res.status}).`));
         return;
       }
       const updated = body as Report;
@@ -164,23 +174,40 @@ export default function App() {
   const noGoCount = reports.filter((r) => r.verdict === "no_go").length;
   const pendingCount = reports.filter((r) => r.approval_status === "pending").length;
 
+  const hasSafetyFlags = Boolean(
+    selectedReport &&
+      (selectedReport.hidden_instructions_flagged ||
+        selectedReport.missing_details_flagged ||
+        selectedReport.panic_tone_flagged ||
+        selectedReport.review_required)
+  );
+
   return (
     <div className="console-shell">
       <header className="topbar">
         <div>
-          <h1>Mission Control — Go/No-Go Launch Console</h1>
+          <div className="brand-row">
+            <span className="live-dot" aria-hidden="true" />
+            <h1>Mission Control — Go/No-Go Launch Console</h1>
+          </div>
           <div className="topbar-sub">Meridian Launch Services · T-90m Flight Director Desk</div>
         </div>
         <div className="metrics-bar">
-          <div className="metric-pill">Reports: {reports.length}</div>
-          <div className="metric-pill">NO-GO: {noGoCount}</div>
-          <div className="metric-pill">Pending Approval: {pendingCount}</div>
+          <div className="metric-pill">
+            Reports<strong>{reports.length}</strong>
+          </div>
+          <div className={`metric-pill ${noGoCount > 0 ? "danger" : ""}`}>
+            NO-GO<strong>{noGoCount}</strong>
+          </div>
+          <div className={`metric-pill ${pendingCount > 0 ? "warn" : ""}`}>
+            Pending<strong>{pendingCount}</strong>
+          </div>
         </div>
       </header>
 
       <div className="main-grid">
         <section className="card">
-          <h2>File Anomaly Report</h2>
+          <h2 className="card-title">File Anomaly Report</h2>
           <form className="form-grid" onSubmit={handleSubmit} noValidate>
             <div className="field">
               <label htmlFor="engineer-name">Engineer Name</label>
@@ -261,11 +288,13 @@ export default function App() {
         </section>
 
         <section className="card">
-          <h2>Flight Director Console</h2>
+          <h2 className="card-title">Flight Director Console</h2>
           {loadError && <div className="alert-error">{loadError}</div>}
 
           {reports.length === 0 ? (
-            <p className="muted">No reports filed yet. Submit a console report to begin triage.</p>
+            <div className="empty-state">
+              No reports filed yet. Submit a console report to begin triage.
+            </div>
           ) : (
             <div className="console-split">
               <div className="report-list">
@@ -274,8 +303,8 @@ export default function App() {
                     key={report.id}
                     type="button"
                     className={`report-item ${
-                      selectedReport?.id === report.id ? "active" : ""
-                    }`}
+                      report.verdict === "go" ? "verdict-go" : "verdict-nogo"
+                    } ${selectedReport?.id === report.id ? "active" : ""}`}
                     onClick={() => setSelectedId(report.id)}
                   >
                     <div className="row-between">
@@ -300,16 +329,16 @@ export default function App() {
               </div>
 
               {selectedReport && (
-                <div>
-                  <div className="row-between">
+                <div className="detail-pane">
+                  <div className="detail-header">
                     <div>
-                      <h3 style={{ margin: 0 }}>
+                      <h3>
                         #{selectedReport.id} · {selectedReport.station} ({selectedReport.name})
                       </h3>
-                      <div className="muted">Filed: {selectedReport.created_at}</div>
+                      <div className="muted mono">Filed {selectedReport.created_at}</div>
                     </div>
                     <span
-                      className={`badge ${
+                      className={`badge badge-lg ${
                         selectedReport.verdict === "go" ? "badge-go" : "badge-nogo"
                       }`}
                     >
@@ -329,14 +358,14 @@ export default function App() {
                       <div className="kv-value">{selectedReport.brief_by_minutes} min</div>
                     </div>
                     <div className="kv-box">
-                      <div className="kv-label">Readings</div>
+                      <div className="kv-label">Telemetry</div>
                       <div className="kv-value mono">
                         {selectedReport.wind_knots}kt · {selectedReport.temp_c}C ·{" "}
                         {selectedReport.fuel_pct}%
                       </div>
                     </div>
                     <div className="kv-box">
-                      <div className="kv-label">Total Cost</div>
+                      <div className="kv-label">Pipeline Cost</div>
                       <div className="kv-value mono">
                         {formatCost(selectedReport.total_cost_usd)} ({selectedReport.total_tokens}{" "}
                         tok)
@@ -345,63 +374,32 @@ export default function App() {
                   </div>
 
                   {selectedReport.violations.length > 0 && (
-                    <div className="section-block">
-                      <div className="alert-error">
-                        <strong>Launch Limit Violations:</strong>
-                        <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
-                          {selectedReport.violations.map((v) => (
-                            <li key={v}>{v}</li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div className="alert-error">
+                      <strong>Launch Limit Violations:</strong>
+                      <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+                        {selectedReport.violations.map((v) => (
+                          <li key={v}>{v}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
-                  <div className="section-block" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <span
-                      className={`badge ${
-                        selectedReport.hidden_instructions_flagged ? "badge-nogo" : "badge-neutral"
-                      }`}
-                    >
-                      Hidden Instructions:{" "}
-                      {selectedReport.hidden_instructions_flagged ? "Flagged" : "Clear"}
-                    </span>
-                    <span
-                      className={`badge ${
-                        selectedReport.missing_details_flagged ? "badge-warn" : "badge-neutral"
-                      }`}
-                    >
-                      Missing Details:{" "}
-                      {selectedReport.missing_details_flagged ? "Flagged" : "Clear"}
-                    </span>
-                    <span
-                      className={`badge ${
-                        selectedReport.panic_tone_flagged ? "badge-warn" : "badge-neutral"
-                      }`}
-                    >
-                      Panic Tone: {selectedReport.panic_tone_flagged ? "Flagged" : "Clear"}
-                    </span>
-                    {selectedReport.review_required && (
-                      <span className="badge badge-nogo">Review Required</span>
-                    )}
-                  </div>
-
-                  <div className="section-block">
-                    <div className="row-between" style={{ marginBottom: 6 }}>
+                  <div className="panel-box">
+                    <div className="row-between" style={{ marginBottom: 8 }}>
                       <strong>Drafted Briefing</strong>
-                      <span className="muted">
+                      <span className="muted mono">
                         Rounds: {selectedReport.draft_rounds} / 3
                       </span>
                     </div>
                     <div className="briefing-box">{selectedReport.briefing_text}</div>
                   </div>
 
-                  <div className="section-block">
+                  <div className="panel-box">
                     <strong>Human Flight Director Approval</strong>
                     {selectedReport.approval_status === "approved" ? (
-                      <p style={{ marginTop: 8, color: "var(--go)", fontWeight: 600 }}>
+                      <div className="approved-banner">
                         Approved by {selectedReport.approved_by} at {selectedReport.approved_at}
-                      </p>
+                      </div>
                     ) : (
                       <div style={{ marginTop: 8 }}>
                         <div className="muted" style={{ marginBottom: 8 }}>
@@ -434,32 +432,116 @@ export default function App() {
                     )}
                   </div>
 
-                  <div className="section-block">
-                    <strong>Pipeline Step Trace ({selectedReport.steps.length} steps)</strong>
-                    <div className="trace-grid">
-                      {selectedReport.steps.map((step) => (
-                        <div
-                          key={step.id}
-                          className="trace-card"
-                          data-testid="trace-step-card"
+                  <details
+                    key={`safety-${selectedReport.id}`}
+                    className="collapsible"
+                    data-testid="safety-note-details"
+                    open={hasSafetyFlags}
+                  >
+                    <summary>
+                      <span className="summary-left">
+                        <span className="chevron" aria-hidden="true">
+                          ▶
+                        </span>
+                        <span>Safety Checks &amp; Raw Note</span>
+                      </span>
+                      <span className={`badge ${hasSafetyFlags ? "badge-warn" : "badge-neutral"}`}>
+                        {selectedReport.review_required
+                          ? "Review Required"
+                          : hasSafetyFlags
+                            ? "Flags Raised"
+                            : "All Clear"}
+                      </span>
+                    </summary>
+                    <div className="collapsible-body">
+                      <div className="flags-row">
+                        <span
+                          className={`badge ${
+                            selectedReport.hidden_instructions_flagged
+                              ? "badge-nogo"
+                              : "badge-neutral"
+                          }`}
                         >
-                          <div className="row-between">
-                            <strong className="mono">
-                              #{step.step_order} {step.step_name}
-                            </strong>
-                            <span className="mono muted">{formatCost(step.cost_usd)}</span>
-                          </div>
-                          <div className="muted">{step.output_summary}</div>
-                          <div className="trace-meta mono">
-                            <span>{step.total_tokens} tokens</span>
-                            <span>
-                              {step.input_tokens} in / {step.output_tokens} out
-                            </span>
-                          </div>
-                        </div>
-                      ))}
+                          Hidden Instructions:{" "}
+                          {selectedReport.hidden_instructions_flagged ? "Flagged" : "Clear"}
+                        </span>
+                        <span
+                          className={`badge ${
+                            selectedReport.missing_details_flagged
+                              ? "badge-warn"
+                              : "badge-neutral"
+                          }`}
+                        >
+                          Missing Details:{" "}
+                          {selectedReport.missing_details_flagged ? "Flagged" : "Clear"}
+                        </span>
+                        <span
+                          className={`badge ${
+                            selectedReport.panic_tone_flagged ? "badge-warn" : "badge-neutral"
+                          }`}
+                        >
+                          Panic Tone: {selectedReport.panic_tone_flagged ? "Flagged" : "Clear"}
+                        </span>
+                        {selectedReport.review_required && (
+                          <span className="badge badge-nogo">Review Required</span>
+                        )}
+                      </div>
+                      <div className="raw-note">{selectedReport.note}</div>
                     </div>
-                  </div>
+                  </details>
+
+                  <details
+                    key={`trace-${selectedReport.id}`}
+                    className="collapsible"
+                    data-testid="trace-details"
+                    open
+                  >
+                    <summary>
+                      <span className="summary-left">
+                        <span className="chevron" aria-hidden="true">
+                          ▶
+                        </span>
+                        <span>Pipeline Step Trace ({selectedReport.steps.length} steps)</span>
+                      </span>
+                      <span className="muted mono">
+                        {selectedReport.total_tokens} tok ·{" "}
+                        {formatCost(selectedReport.total_cost_usd)}
+                      </span>
+                    </summary>
+                    <div className="collapsible-body">
+                      <div className="trace-grid">
+                        {selectedReport.steps.map((step) => (
+                          <div
+                            key={step.id}
+                            className="trace-card"
+                            data-testid="trace-step-card"
+                          >
+                            <div className="row-between">
+                              <strong className="mono">
+                                #{step.step_order} {step.step_name}
+                              </strong>
+                              <span className="mono muted">{formatCost(step.cost_usd)}</span>
+                            </div>
+                            <div className="muted">{step.output_summary}</div>
+                            <div className="trace-meta mono">
+                              <span>{step.total_tokens} tokens</span>
+                              <span>
+                                {step.input_tokens} in / {step.output_tokens} out
+                              </span>
+                            </div>
+                            {Object.keys(step.detail).length > 0 && (
+                              <details className="step-raw">
+                                <summary>Step payload</summary>
+                                <pre className="mono">
+                                  {JSON.stringify(step.detail, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
                 </div>
               )}
             </div>

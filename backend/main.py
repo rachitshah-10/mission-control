@@ -54,7 +54,13 @@ def create_app(
 
     @app.post("/api/reports", response_model=ReportOut, status_code=status.HTTP_201_CREATED)
     async def file_report(payload: ReportCreate) -> dict:
-        record, steps = await run_report_pipeline(payload, active_model)
+        try:
+            record, steps = await run_report_pipeline(payload, active_model)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Pipeline model call failed: {exc}",
+            ) from exc
         report_id = save_report_with_steps(resolved_db, record, steps)
         saved = get_report(resolved_db, report_id)
         if saved is None:
