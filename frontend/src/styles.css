@@ -90,6 +90,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 18px;
+  min-width: 0;
 }
 
 .card h2 {
@@ -100,11 +101,12 @@ body {
 .form-grid {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .telemetry-inputs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -112,6 +114,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .field label {
@@ -122,6 +125,8 @@ body {
 
 .field input,
 .field textarea {
+  width: 100%;
+  min-width: 0;
   background: #0d1424;
   color: var(--text);
   border: 1px solid var(--border);

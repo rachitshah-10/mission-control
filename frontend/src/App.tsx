@@ -36,6 +36,16 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(6)}`;
 }
 
+async function parseResponseBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { detail: text };
+  }
+}
+
 export default function App() {
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -110,9 +120,9 @@ export default function App() {
           note: form.note,
         }),
       });
-      const body = await res.json();
+      const body = await parseResponseBody(res);
       if (!res.ok) {
-        setFormError(formatApiError(body, "Report submission failed."));
+        setFormError(formatApiError(body, `Report submission failed (${res.status}).`));
         return;
       }
       const created = body as Report;
@@ -146,9 +156,9 @@ export default function App() {
           actor_type: "human",
         }),
       });
-      const body = await res.json();
+      const body = await parseResponseBody(res);
       if (!res.ok) {
-        setApprovalError(formatApiError(body, "Approval failed."));
+        setApprovalError(formatApiError(body, `Approval failed (${res.status}).`));
         return;
       }
       const updated = body as Report;

@@ -8,6 +8,8 @@ from typing import Any, Protocol
 
 from openai import AsyncOpenAI
 
+DEFAULT_BASE_URL = "https://foundry-apps-01.services.ai.azure.com/openai/v1"
+
 
 @dataclass(frozen=True)
 class ModelResponse:
@@ -26,9 +28,16 @@ class ModelClient(Protocol):
 
 
 class OpenAIModelClient:
-    def __init__(self, api_key: str, model: str = "gpt-6-astra") -> None:
-        self._client = AsyncOpenAI(api_key=api_key)
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-6-astra",
+        base_url: str | None = DEFAULT_BASE_URL,
+        client: Any = None,
+    ) -> None:
+        self.base_url = base_url
         self._model = model
+        self._client = client or AsyncOpenAI(api_key=api_key, base_url=base_url)
 
     async def complete(
         self,
@@ -38,22 +47,26 @@ class OpenAIModelClient:
     ) -> ModelResponse:
         kwargs: dict[str, Any] = {
             "model": self._model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            "instructions": system_prompt,
+            "input": user_prompt,
         }
         if response_schema is not None:
-            kwargs["response_format"] = {
-                "type": "json_schema",
-                "json_schema": response_schema,
+            kwargs["text"] = {
+                "format": {
+                    "type": "json_schema",
+                    **response_schema,
+                }
             }
 
-        completion = await self._client.chat.completions.create(**kwargs)
-        content = completion.choices[0].message.content or ""
-        usage = completion.usage
-        input_tokens = int(usage.prompt_tokens) if usage and usage.prompt_tokens else 0
-        output_tokens = int(usage.completion_tokens) if usage and usage.completion_tokens else 0
+        response = await self._client.responses.create(**kwargs)
+        content = getattr(response, "output_text", "") or ""
+        usage = getattr(response, "usage", None)
+        input_tokens = (
+            int(usage.input_tokens) if usage and getattr(usage, "input_tokens", None) else 0
+        )
+        output_tokens = (
+            int(usage.output_tokens) if usage and getattr(usage, "output_tokens", None) else 0
+        )
         return ModelResponse(
             content=content,
             input_tokens=input_tokens,
@@ -212,4 +225,5 @@ def get_model_client() -> ModelClient:
     if use_fake or not api_key:
         return FakeModelClient()
     model = os.getenv("OPENAI_MODEL", "gpt-6-astra").strip() or "gpt-6-astra"
-    return OpenAIModelClient(api_key=api_key, model=model)
+    base_url = os.getenv("OPENAI_BASE_URL", DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
+    return OpenAIModelClient(api_key=api_key, model=model, base_url=base_url)
