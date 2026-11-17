@@ -107,13 +107,10 @@ export default function App() {
     }
 
     setSubmitting(true);
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 90_000);
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
         body: JSON.stringify({
           name: form.name,
           station: form.station,
@@ -133,13 +130,8 @@ export default function App() {
       setSelectedId(created.id);
       setForm(EMPTY_FORM);
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setFormError("Request timed out waiting for the triage pipeline. Please try again.");
-      } else {
-        setFormError(err instanceof Error ? err.message : "Network error submitting report.");
-      }
+      setFormError(err instanceof Error ? err.message : "Network error submitting report.");
     } finally {
-      window.clearTimeout(timer);
       setSubmitting(false);
     }
   }

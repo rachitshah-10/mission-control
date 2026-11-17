@@ -40,7 +40,6 @@ class OpenAIModelClient:
         self._client = client or AsyncOpenAI(
             api_key=api_key,
             base_url=base_url,
-            timeout=30.0,
         )
 
     async def complete(
