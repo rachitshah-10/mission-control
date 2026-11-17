@@ -6,6 +6,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.db import (
     approve_report,
@@ -21,13 +23,17 @@ from backend.schemas import ApprovalRequest, ReportCreate, ReportOut
 
 load_dotenv()
 
+DEFAULT_STATIC_DIR = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
 
 def create_app(
     db_path: str | Path | None = None,
     model_client: ModelClient | None = None,
+    static_dir: str | Path | None = None,
 ) -> FastAPI:
     resolved_db = resolve_db_path(db_path)
     active_model = model_client or get_model_client()
+    resolved_static = Path(static_dir) if static_dir is not None else DEFAULT_STATIC_DIR
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -76,6 +82,16 @@ def create_app(
         if updated is None:
             raise HTTPException(status_code=500, detail="Failed to load approved report")
         return updated
+
+    index_file = resolved_static / "index.html"
+    if index_file.is_file():
+        assets_dir = resolved_static / "assets"
+        if assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+        @app.get("/", include_in_schema=False)
+        def serve_index() -> FileResponse:
+            return FileResponse(index_file)
 
     return app
 

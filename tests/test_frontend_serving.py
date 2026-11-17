@@ -9,7 +9,8 @@ def test_serves_built_frontend_index_and_api_routes(tmp_path: Path):
     dist_dir = tmp_path / "dist"
     dist_dir.mkdir()
     (dist_dir / "index.html").write_text(
-        "<!doctype html><html><title>Mission Control</title><body><div id='root'></div></body></html>",
+        "<!doctype html><html><title>Mission Control</title>"
+        "<body><div id='root'></div></body></html>",
         encoding="utf-8",
     )
 
